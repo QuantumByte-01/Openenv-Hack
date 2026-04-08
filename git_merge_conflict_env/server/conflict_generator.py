@@ -27,100 +27,189 @@ class Task:
 
 
 # ──────────────────────────────────────────────────────────
-#  EASY TASKS: Single conflict, obvious resolution
+#  EASY TASKS: Single conflict — both sides add new things,
+#  agent must merge ALL additions (not just pick one side)
 # ──────────────────────────────────────────────────────────
 
 EASY_SCENARIOS = [
     ConflictScenario(
-        filename="config.py",
+        filename="app_config.py",
         conflicted_content="""\
 # Application Configuration
-
 APP_NAME = "MyApp"
-<<<<<<< HEAD
-DEBUG = False
-LOG_LEVEL = "WARNING"
-=======
-DEBUG = True
-LOG_LEVEL = "DEBUG"
->>>>>>> feature/enable-debug
+VERSION = "1.0.0"
 
-MAX_RETRIES = 3
-TIMEOUT = 30
+<<<<<<< HEAD
+# Cache settings
+CACHE_TTL = 300
+CACHE_MAX_SIZE = 1000
+CACHE_BACKEND = "redis"
+=======
+# Session settings
+SESSION_TIMEOUT = 1800
+SESSION_COOKIE_NAME = "app_session"
+SESSION_SECURE = True
+>>>>>>> feature/session-config
+
+DEBUG = False
 """,
         ground_truth="""\
 # Application Configuration
-
 APP_NAME = "MyApp"
+VERSION = "1.0.0"
+
+# Cache settings
+CACHE_TTL = 300
+CACHE_MAX_SIZE = 1000
+CACHE_BACKEND = "redis"
+
+# Session settings
+SESSION_TIMEOUT = 1800
+SESSION_COOKIE_NAME = "app_session"
+SESSION_SECURE = True
+
 DEBUG = False
-LOG_LEVEL = "WARNING"
-
-MAX_RETRIES = 3
-TIMEOUT = 30
 """,
-        branch_info="HEAD (main) branch: DEBUG=False, LOG_LEVEL='WARNING' (production settings). "
-        "feature/enable-debug branch: DEBUG=True, LOG_LEVEL='DEBUG' (development settings). "
-        "This file is being merged back into main.",
+        branch_info="HEAD branch added cache configuration (CACHE_TTL, CACHE_MAX_SIZE, CACHE_BACKEND). "
+        "feature/session-config branch added session configuration (SESSION_TIMEOUT, SESSION_COOKIE_NAME, SESSION_SECURE). "
+        "These are independent configuration sections.",
         conflict_count=1,
-        key_lines=["DEBUG = False", 'LOG_LEVEL = "WARNING"'],
-        reject_lines=["DEBUG = True", 'LOG_LEVEL = "DEBUG"'],
+        key_lines=[
+            "CACHE_TTL = 300",
+            "CACHE_MAX_SIZE = 1000",
+            "CACHE_BACKEND",
+            "SESSION_TIMEOUT = 1800",
+            "SESSION_COOKIE_NAME",
+            "SESSION_SECURE = True",
+        ],
+        reject_lines=[],
     ),
     ConflictScenario(
-        filename="greeting.py",
+        filename="validators.py",
         conflicted_content="""\
-def greet(name):
-<<<<<<< HEAD
-    return f"Hello, {name}!"
-=======
-    return f"Hi, {name}!"
->>>>>>> feature/casual-greeting
+import re
 
-def farewell(name):
-    return f"Goodbye, {name}!"
+<<<<<<< HEAD
+def validate_email(email: str) -> bool:
+    pattern = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
+    return bool(re.match(pattern, email))
+
+def validate_username(username: str) -> bool:
+    return len(username) >= 3 and username.isalnum()
+=======
+def validate_phone(phone: str) -> bool:
+    digits = re.sub(r"[\s\-\(\)]", "", phone)
+    return digits.isdigit() and len(digits) >= 10
+
+def validate_postal_code(code: str) -> bool:
+    return bool(re.match(r"^\d{5}(-\d{4})?$", code))
+>>>>>>> feature/address-validators
+
+def validate_url(url: str) -> bool:
+    return url.startswith(("http://", "https://"))
 """,
         ground_truth="""\
-def greet(name):
-    return f"Hello, {name}!"
+import re
 
-def farewell(name):
-    return f"Goodbye, {name}!"
+def validate_email(email: str) -> bool:
+    pattern = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
+    return bool(re.match(pattern, email))
+
+def validate_username(username: str) -> bool:
+    return len(username) >= 3 and username.isalnum()
+
+def validate_phone(phone: str) -> bool:
+    digits = re.sub(r"[\s\-\(\)]", "", phone)
+    return digits.isdigit() and len(digits) >= 10
+
+def validate_postal_code(code: str) -> bool:
+    return bool(re.match(r"^\d{5}(-\d{4})?$", code))
+
+def validate_url(url: str) -> bool:
+    return url.startswith(("http://", "https://"))
 """,
-        branch_info="HEAD (main) branch: uses 'Hello' as the greeting. "
-        "feature/casual-greeting branch: changed to 'Hi' as the greeting. "
-        "One of these is the correct style for the application.",
+        branch_info="HEAD branch added validate_email() and validate_username() functions. "
+        "feature/address-validators branch added validate_phone() and validate_postal_code() functions. "
+        "Both branches extended the validators module independently.",
         conflict_count=1,
-        key_lines=['return f"Hello, {name}!"'],
-        reject_lines=['return f"Hi, {name}!"'],
+        key_lines=[
+            "def validate_email(",
+            "def validate_username(",
+            "def validate_phone(",
+            "def validate_postal_code(",
+        ],
+        reject_lines=[],
     ),
     ConflictScenario(
-        filename="constants.py",
+        filename="string_utils.py",
         conflicted_content="""\
-# API Constants
-API_VERSION = "v2"
 <<<<<<< HEAD
-BASE_URL = "https://api.production.com"
-API_KEY_HEADER = "X-API-Key"
-=======
-BASE_URL = "https://api.staging.com"
-API_KEY_HEADER = "Authorization"
->>>>>>> feature/staging-config
+def slugify(text: str) -> str:
+    import re
+    text = text.lower().strip()
+    text = re.sub(r"[^\w\s-]", "", text)
+    return re.sub(r"[\s_-]+", "-", text)
 
-RATE_LIMIT = 100
+def truncate(text: str, max_length: int, suffix: str = "...") -> str:
+    if len(text) <= max_length:
+        return text
+    return text[:max_length - len(suffix)] + suffix
+
+def count_words(text: str) -> int:
+    return len(text.split())
+=======
+def camel_to_snake(name: str) -> str:
+    import re
+    s1 = re.sub(r"(.)([A-Z][a-z]+)", r"\1_\2", name)
+    return re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", s1).lower()
+
+def snake_to_camel(name: str) -> str:
+    parts = name.split("_")
+    return parts[0] + "".join(p.capitalize() for p in parts[1:])
+
+def pad_string(text: str, width: int, char: str = " ") -> str:
+    return text.center(width, char)
+>>>>>>> feature/naming-utils
 """,
         ground_truth="""\
-# API Constants
-API_VERSION = "v2"
-BASE_URL = "https://api.production.com"
-API_KEY_HEADER = "X-API-Key"
+def slugify(text: str) -> str:
+    import re
+    text = text.lower().strip()
+    text = re.sub(r"[^\w\s-]", "", text)
+    return re.sub(r"[\s_-]+", "-", text)
 
-RATE_LIMIT = 100
+def truncate(text: str, max_length: int, suffix: str = "...") -> str:
+    if len(text) <= max_length:
+        return text
+    return text[:max_length - len(suffix)] + suffix
+
+def count_words(text: str) -> int:
+    return len(text.split())
+
+def camel_to_snake(name: str) -> str:
+    import re
+    s1 = re.sub(r"(.)([A-Z][a-z]+)", r"\1_\2", name)
+    return re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", s1).lower()
+
+def snake_to_camel(name: str) -> str:
+    parts = name.split("_")
+    return parts[0] + "".join(p.capitalize() for p in parts[1:])
+
+def pad_string(text: str, width: int, char: str = " ") -> str:
+    return text.center(width, char)
 """,
-        branch_info="HEAD (main) branch: BASE_URL points to api.production.com, API_KEY_HEADER='X-API-Key'. "
-        "feature/staging-config branch: BASE_URL points to api.staging.com, API_KEY_HEADER='Authorization'. "
-        "This is a configuration file for the live service.",
+        branch_info="HEAD branch added slugify(), truncate(), and count_words() utility functions. "
+        "feature/naming-utils branch added camel_to_snake(), snake_to_camel(), and pad_string() utility functions.",
         conflict_count=1,
-        key_lines=['BASE_URL = "https://api.production.com"', 'API_KEY_HEADER = "X-API-Key"'],
-        reject_lines=['BASE_URL = "https://api.staging.com"', 'API_KEY_HEADER = "Authorization"'],
+        key_lines=[
+            "def slugify(",
+            "def truncate(",
+            "def count_words(",
+            "def camel_to_snake(",
+            "def snake_to_camel(",
+            "def pad_string(",
+        ],
+        reject_lines=[],
     ),
 ]
 
@@ -183,9 +272,8 @@ def create_user(name: str, email: str, role: str = "viewer", age: int = 0) -> Us
 def get_user_display(user: User) -> str:
     return f"{user.name} <{user.email}>"
 """,
-        branch_info="HEAD (main) branch: added role field to User and email validation in create_user(). "
-        "feature/user-profile branch: added age field to User and name validation in create_user(). "
-        "Both branches worked on the User model in parallel.",
+        branch_info="HEAD branch: User dataclass gained a role field; create_user() validates email format. "
+        "feature/user-profile branch: User dataclass gained an age field; create_user() validates that name is non-empty.",
         conflict_count=2,
         key_lines=[
             'role: str = "viewer"',
@@ -269,10 +357,8 @@ class Calculator:
             raise ValueError("Cannot take square root of negative number")
         return math.sqrt(x)
 """,
-        branch_info="HEAD (main) branch: added history tracking (self.history.append) to add() and subtract(), "
-        "and added get_history() method. "
-        "feature/precision branch: added rounding (round(result, 2)) to add(), added multiply() method, "
-        "and added clear() method. Both branches modified add() and introduced new methods.",
+        branch_info="HEAD branch: add() and subtract() now append to self.history; get_history() method added. "
+        "feature/precision branch: add() now returns round(result, 2); multiply() and clear() methods added.",
         conflict_count=2,
         key_lines=[
             "self.history.append(",
