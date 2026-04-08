@@ -71,14 +71,19 @@ step(MergeConflictAction(resolved_content="..."))
 - **Difficulty**: Agent must merge both sides intelligently, keeping additions from both branches
 - **Expected score**: 0.75–1.00 for capable models
 
-### Task 3: Hard — Complex Multi-Conflict Files
-- **Scenarios**: 2 files with complex interleaved conflicts (auth_service, api_routes)
-- **Difficulty**: Multiple conflicts per file; branch_info describes changes only, not how to merge
+### Task 3: Hard — Production-Grade Multi-Conflict Files
+- **Scenarios**: 3 files (auth_service, api_routes, connection_pool)
+- **Difficulty**: Multi-conflict security hardening + a sync→async connection-pool refactor
+  where the merge must drop `threading.RLock` and use `asyncio.Lock()` inside async
+  coroutines. 70B routinely leaves sync `with self._lock:` blocks in async methods.
 - **Expected score**: 0.60–0.90 for capable models
 
 ### Task 4: Expert — Deep Logic Merges
-- **Scenarios**: 2 files with 2–3 conflicts requiring logical merge (data_processor, report_generator)
-- **Difficulty**: Must combine algorithmic improvements, caching, and format support from both branches
+- **Scenarios**: 3 files (data_processor, report_generator, stream_aggregator)
+- **Difficulty**: Algorithmic merges including a streaming aggregator where HEAD added a
+  custom reducer + closed-window guard and the feature branch added watermark-based
+  late-event handling. The merge must keep BOTH guards AND advance the watermark — 70B
+  tends to drop one half.
 - **Expected score**: 0.50–0.80 for capable models
 
 ### Task 5: Nightmare — Cross-File Naming Consistency
@@ -91,16 +96,16 @@ step(MergeConflictAction(resolved_content="..."))
 The grader uses weighted multi-aspect scoring:
 
 ```
-score = 0.15 × marker_score        # no conflict markers remain
-      + 0.35 × key_lines_score     # required code patterns present
+score = 0.10 × marker_score        # no conflict markers remain
+      + 0.40 × key_lines_score     # required code patterns present
       + 0.15 × reject_lines_score  # forbidden patterns absent
-      + 0.25 × similarity_score    # textual match to ground truth
-      + 0.10 × syntax_score        # valid Python syntax
+      + 0.30 × similarity_score    # textual match to ground truth
+      + 0.05 × syntax_score        # valid Python syntax
 ```
 
 **Attempt decay**: `step_reward = score × 0.9^(attempt-1)` — rewards trying to get it right on the first attempt.
 
-**Multi-file grading**: For tasks with multiple files, the final score is computed across all resolved files together, penalizing cross-file inconsistency.
+**Multi-file grading**: For tasks with multiple files, the final score is `0.7 × min + 0.3 × avg` across files. The min term penalizes any single weak file rather than smoothing it away with an average — this is what surfaces real cross-task variance instead of collapsing everything to 1.0.
 
 Special cases:
 - Empty resolution → `0.0`
@@ -145,14 +150,14 @@ result = await env.reset(task_id="hard")
 
 | Task | Score | Notes |
 |------|-------|-------|
-| easy | 1.00 | Trivial for frontier models |
-| medium | 1.00 | Semantic merge handled well |
-| hard | 1.00 | Correct with branch context |
-| expert | 1.00 | Logic merge solved |
-| nightmare | 0.87 | Cross-file consistency is genuinely hard |
-| **average** | **0.97** | |
+| easy | 0.98 | Trivial for frontier models |
+| medium | 0.97 | Semantic merge handled well |
+| hard | 0.95 | connection_pool refactor catches sync→async lock confusion |
+| expert | 0.96 | stream_aggregator catches dropped guards |
+| nightmare | 0.80 | Cross-file consistency stays genuinely hard |
+| **average** | **0.93** | |
 
-The nightmare task provides real training signal even for 70B parameter models.
+Real training signal across all five difficulty levels — every task has scenarios that even a 70B-parameter frontier model gets imperfectly, with the spread widening from `easy` to `nightmare`.
 
 ## Environment Variables
 
