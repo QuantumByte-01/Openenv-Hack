@@ -159,6 +159,16 @@ result = await env.reset(task_id="hard")
 
 Real training signal across all five difficulty levels — every task has scenarios that even a 70B-parameter frontier model gets imperfectly, with the spread widening from `easy` to `nightmare`.
 
+## Related Work
+
+Prior work on automated merge conflict resolution (ConGra, GitGoodBench, ConflictBench, and the
+Yale/UCSD line on pre-trained LMs for textual + semantic merge conflicts) studies *what* models
+get wrong but does not expose merge resolution as an RL training environment. This project
+turns those failure modes into a deterministic OpenEnv with structured rewards so RL agents can
+actually be trained against them. The trap design — sync-to-async lock confusion in
+`connection_pool.py`, dropped guards in `stream_aggregator.py`, cross-file naming drift in the
+`order_*` files — is grounded in the failure modes those benchmarks document.
+
 ## Environment Variables
 
 | Variable | Required | Default | Description |
