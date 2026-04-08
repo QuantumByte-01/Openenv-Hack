@@ -1,0 +1,22 @@
+# Secrets
+.env
+
+# IDE
+.vscode/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+*.egg-info/
+dist/
+build/
+
+# Temp/dev files
+docs_for_claude/
+test_scores.py
+upload_space.py
+
+# uv
+.python-version

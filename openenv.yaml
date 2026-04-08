@@ -1,0 +1,19 @@
+spec_version: 1
+name: git-merge-conflict-env
+type: space
+runtime: fastapi
+app: git_merge_conflict_env.server.app:app
+port: 7860
+description: "RL environment for training AI agents to resolve git merge conflicts. Features 5 difficulty levels (easy → nightmare) with aspect-based grading and cross-file consistency challenges."
+version: "2.0.0"
+tasks:
+  - id: easy
+    description: "Single-conflict files — agent picks correct side based on branch context"
+  - id: medium
+    description: "Multiple conflicts per file — agent must merge both sides intelligently"
+  - id: hard
+    description: "Complex multi-conflict files — branch info describes changes, not instructions"
+  - id: expert
+    description: "Deep logic merges — must combine algorithmic improvements from both branches"
+  - id: nightmare
+    description: "Cross-file naming consistency — class/method renames must match across 3 files"

@@ -1,0 +1,13 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+ENV PYTHONPATH=/app
+EXPOSE 7860
+
+CMD ["uvicorn", "git_merge_conflict_env.server.app:app", "--host", "0.0.0.0", "--port", "7860"]
