@@ -738,6 +738,215 @@ def handle_protected(token: str, required_role: Optional[str] = None) -> dict:
             '"Invalid credentials"',
         ],
     ),
+    ConflictScenario(
+        filename="connection_pool.py",
+        conflicted_content="""\
+import asyncio
+import logging
+import threading
+import time
+from contextlib import asynccontextmanager
+from typing import Dict, List, Optional
+
+logger = logging.getLogger(__name__)
+
+
+class Connection:
+    def __init__(self, conn_id: str, host: str):
+        self.conn_id = conn_id
+        self.host = host
+        self.created_at = time.time()
+        self.in_use = False
+
+    async def execute(self, query: str) -> dict:
+        await asyncio.sleep(0)
+        return {"query": query, "conn": self.conn_id}
+
+    async def close(self) -> None:
+        await asyncio.sleep(0)
+
+
+class ConnectionPool:
+<<<<<<< HEAD
+    def __init__(self, host: str, max_size: int = 10):
+        self.host = host
+        self.max_size = max_size
+        self._connections: List[Connection] = []
+        self._lock = threading.RLock()
+        self._counter = 0
+
+    def acquire(self) -> Connection:
+        with self._lock:
+            for conn in self._connections:
+                if not conn.in_use:
+                    conn.in_use = True
+                    return conn
+            if len(self._connections) >= self.max_size:
+                raise RuntimeError("Pool exhausted")
+            self._counter += 1
+            conn = Connection(f"conn-{self._counter}", self.host)
+            conn.in_use = True
+            self._connections.append(conn)
+            return conn
+
+    def release(self, conn: Connection) -> None:
+        with self._lock:
+            conn.in_use = False
+
+    def size(self) -> int:
+        with self._lock:
+            return len(self._connections)
+=======
+    def __init__(self, host: str, max_size: int = 10, idle_timeout: float = 300.0):
+        self.host = host
+        self.max_size = max_size
+        self.idle_timeout = idle_timeout
+        self._connections: List[Connection] = []
+        self._async_lock = asyncio.Lock()
+        self._counter = 0
+        self._last_used: Dict[str, float] = {}
+
+    async def acquire(self) -> Connection:
+        async with self._async_lock:
+            now = time.time()
+            for conn in list(self._connections):
+                last = self._last_used.get(conn.conn_id, conn.created_at)
+                if not conn.in_use and now - last > self.idle_timeout:
+                    await conn.close()
+                    self._connections.remove(conn)
+                    self._last_used.pop(conn.conn_id, None)
+            for conn in self._connections:
+                if not conn.in_use:
+                    conn.in_use = True
+                    self._last_used[conn.conn_id] = now
+                    return conn
+            if len(self._connections) >= self.max_size:
+                raise RuntimeError("Pool exhausted")
+            self._counter += 1
+            conn = Connection(f"conn-{self._counter}", self.host)
+            conn.in_use = True
+            self._connections.append(conn)
+            self._last_used[conn.conn_id] = now
+            return conn
+
+    async def release(self, conn: Connection) -> None:
+        async with self._async_lock:
+            conn.in_use = False
+            self._last_used[conn.conn_id] = time.time()
+
+    @asynccontextmanager
+    async def connection(self):
+        conn = await self.acquire()
+        try:
+            yield conn
+        finally:
+            await self.release(conn)
+>>>>>>> feature/async-pool
+""",
+        ground_truth="""\
+import asyncio
+import logging
+import threading
+import time
+from contextlib import asynccontextmanager
+from typing import Dict, List, Optional
+
+logger = logging.getLogger(__name__)
+
+
+class Connection:
+    def __init__(self, conn_id: str, host: str):
+        self.conn_id = conn_id
+        self.host = host
+        self.created_at = time.time()
+        self.in_use = False
+
+    async def execute(self, query: str) -> dict:
+        await asyncio.sleep(0)
+        return {"query": query, "conn": self.conn_id}
+
+    async def close(self) -> None:
+        await asyncio.sleep(0)
+
+
+class ConnectionPool:
+    def __init__(self, host: str, max_size: int = 10, idle_timeout: float = 300.0):
+        self.host = host
+        self.max_size = max_size
+        self.idle_timeout = idle_timeout
+        self._connections: List[Connection] = []
+        self._async_lock = asyncio.Lock()
+        self._counter = 0
+        self._last_used: Dict[str, float] = {}
+
+    async def acquire(self) -> Connection:
+        async with self._async_lock:
+            now = time.time()
+            for conn in list(self._connections):
+                last = self._last_used.get(conn.conn_id, conn.created_at)
+                if not conn.in_use and now - last > self.idle_timeout:
+                    await conn.close()
+                    self._connections.remove(conn)
+                    self._last_used.pop(conn.conn_id, None)
+            for conn in self._connections:
+                if not conn.in_use:
+                    conn.in_use = True
+                    self._last_used[conn.conn_id] = now
+                    return conn
+            if len(self._connections) >= self.max_size:
+                raise RuntimeError("Pool exhausted")
+            self._counter += 1
+            conn = Connection(f"conn-{self._counter}", self.host)
+            conn.in_use = True
+            self._connections.append(conn)
+            self._last_used[conn.conn_id] = now
+            return conn
+
+    async def release(self, conn: Connection) -> None:
+        async with self._async_lock:
+            conn.in_use = False
+            self._last_used[conn.conn_id] = time.time()
+
+    async def size(self) -> int:
+        async with self._async_lock:
+            return len(self._connections)
+
+    @asynccontextmanager
+    async def connection(self):
+        conn = await self.acquire()
+        try:
+            yield conn
+        finally:
+            await self.release(conn)
+""",
+        branch_info="HEAD (main) has a synchronous ConnectionPool with threading.RLock and a "
+        "size() method, sync acquire()/release() methods, and a max_size cap. "
+        "feature/async-pool rewrote acquire/release as async coroutines guarded by "
+        "asyncio.Lock(), added an idle_timeout that prunes stale connections on acquire, "
+        "tracks last_used timestamps in _last_used, and exposes an asynccontextmanager "
+        "connection() helper. The async branch dropped size() entirely. Both branches "
+        "modified __init__, acquire, and release.",
+        conflict_count=1,
+        key_lines=[
+            "self._async_lock = asyncio.Lock()",
+            "self.idle_timeout = idle_timeout",
+            "self._last_used: Dict[str, float]",
+            "async def acquire(",
+            "async def release(",
+            "async def size(",
+            "async with self._async_lock:",
+            "now - last > self.idle_timeout",
+            "@asynccontextmanager",
+            "async def connection(",
+            "await conn.close()",
+        ],
+        reject_lines=[
+            "self._lock = threading.RLock()",
+            "self._lock: threading.RLock",
+            "with self._lock:",
+            "self._async_lock = threading.RLock()",
+        ],
+    ),
 ]
 
 # ──────────────────────────────────────────────────────────
@@ -992,6 +1201,191 @@ class ReportGenerator:
             "Total:",
         ],
         reject_lines=[],
+    ),
+    ConflictScenario(
+        filename="stream_aggregator.py",
+        conflicted_content="""\
+import logging
+from collections import defaultdict
+from dataclasses import dataclass, field
+from typing import Callable, DefaultDict, Dict, List, Optional
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class Event:
+    key: str
+    value: float
+    timestamp: float
+
+
+@dataclass
+class WindowState:
+    count: int = 0
+    sum: float = 0.0
+    min_ts: float = float("inf")
+    max_ts: float = float("-inf")
+
+
+class StreamAggregator:
+<<<<<<< HEAD
+    def __init__(self, window_size: float, reducer: Callable[[float, float], float] = lambda a, b: a + b):
+        self.window_size = window_size
+        self.reducer = reducer
+        self._windows: DefaultDict[int, Dict[str, WindowState]] = defaultdict(dict)
+        self._closed: List[int] = []
+
+    def _window_id(self, ts: float) -> int:
+        return int(ts // self.window_size)
+
+    def push(self, event: Event) -> None:
+        wid = self._window_id(event.timestamp)
+        if wid in self._closed:
+            logger.warning("dropping event for closed window %s", wid)
+            return
+        bucket = self._windows[wid]
+        state = bucket.get(event.key) or WindowState()
+        state.count += 1
+        state.sum = self.reducer(state.sum, event.value)
+        state.min_ts = min(state.min_ts, event.timestamp)
+        state.max_ts = max(state.max_ts, event.timestamp)
+        bucket[event.key] = state
+
+    def close_window(self, wid: int) -> Dict[str, WindowState]:
+        if wid in self._closed:
+            return {}
+        self._closed.append(wid)
+        return self._windows.pop(wid, {})
+=======
+    def __init__(self, window_size: float, allowed_lateness: float = 0.0):
+        self.window_size = window_size
+        self.allowed_lateness = allowed_lateness
+        self._windows: DefaultDict[int, Dict[str, WindowState]] = defaultdict(dict)
+        self._watermark: float = 0.0
+
+    def _window_id(self, ts: float) -> int:
+        return int(ts // self.window_size)
+
+    def push(self, event: Event) -> None:
+        wid = self._window_id(event.timestamp)
+        window_end = (wid + 1) * self.window_size
+        if window_end + self.allowed_lateness < self._watermark:
+            logger.warning("late event %s past watermark", event.key)
+            return
+        bucket = self._windows[wid]
+        state = bucket.get(event.key) or WindowState()
+        state.count += 1
+        state.sum += event.value
+        state.min_ts = min(state.min_ts, event.timestamp)
+        state.max_ts = max(state.max_ts, event.timestamp)
+        bucket[event.key] = state
+        self._watermark = max(self._watermark, event.timestamp)
+
+    def expired_windows(self) -> List[int]:
+        return [
+            wid for wid in list(self._windows)
+            if (wid + 1) * self.window_size + self.allowed_lateness < self._watermark
+        ]
+>>>>>>> feature/event-time-watermarks
+""",
+        ground_truth="""\
+import logging
+from collections import defaultdict
+from dataclasses import dataclass, field
+from typing import Callable, DefaultDict, Dict, List, Optional
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class Event:
+    key: str
+    value: float
+    timestamp: float
+
+
+@dataclass
+class WindowState:
+    count: int = 0
+    sum: float = 0.0
+    min_ts: float = float("inf")
+    max_ts: float = float("-inf")
+
+
+class StreamAggregator:
+    def __init__(
+        self,
+        window_size: float,
+        reducer: Callable[[float, float], float] = lambda a, b: a + b,
+        allowed_lateness: float = 0.0,
+    ):
+        self.window_size = window_size
+        self.reducer = reducer
+        self.allowed_lateness = allowed_lateness
+        self._windows: DefaultDict[int, Dict[str, WindowState]] = defaultdict(dict)
+        self._closed: List[int] = []
+        self._watermark: float = 0.0
+
+    def _window_id(self, ts: float) -> int:
+        return int(ts // self.window_size)
+
+    def push(self, event: Event) -> None:
+        wid = self._window_id(event.timestamp)
+        if wid in self._closed:
+            logger.warning("dropping event for closed window %s", wid)
+            return
+        window_end = (wid + 1) * self.window_size
+        if window_end + self.allowed_lateness < self._watermark:
+            logger.warning("late event %s past watermark", event.key)
+            return
+        bucket = self._windows[wid]
+        state = bucket.get(event.key) or WindowState()
+        state.count += 1
+        state.sum = self.reducer(state.sum, event.value)
+        state.min_ts = min(state.min_ts, event.timestamp)
+        state.max_ts = max(state.max_ts, event.timestamp)
+        bucket[event.key] = state
+        self._watermark = max(self._watermark, event.timestamp)
+
+    def expired_windows(self) -> List[int]:
+        return [
+            wid for wid in list(self._windows)
+            if (wid + 1) * self.window_size + self.allowed_lateness < self._watermark
+        ]
+
+    def close_window(self, wid: int) -> Dict[str, WindowState]:
+        if wid in self._closed:
+            return {}
+        self._closed.append(wid)
+        return self._windows.pop(wid, {})
+""",
+        branch_info="HEAD (main) added a custom reducer callable for combining values, "
+        "explicit close_window() with a _closed list that drops events for closed windows. "
+        "feature/event-time-watermarks added event-time semantics: an allowed_lateness param, "
+        "a _watermark advanced by each push, an expired_windows() helper, and late-event "
+        "rejection. Both branches modified __init__ and push(); the merge must keep the "
+        "reducer for value combination, the closed-window guard, the watermark advance, "
+        "the late-event check, AND expose both close_window() and expired_windows().",
+        conflict_count=1,
+        key_lines=[
+            "reducer: Callable[[float, float], float]",
+            "allowed_lateness: float",
+            "self.reducer = reducer",
+            "self.allowed_lateness = allowed_lateness",
+            "self._closed: List[int]",
+            "self._watermark: float",
+            "if wid in self._closed:",
+            "window_end + self.allowed_lateness < self._watermark",
+            "state.sum = self.reducer(state.sum, event.value)",
+            "self._watermark = max(self._watermark, event.timestamp)",
+            "def expired_windows(",
+            "def close_window(",
+        ],
+        reject_lines=[
+            "state.sum += event.value",
+            "state.sum = state.sum + event.value",
+        ],
     ),
 ]
 
