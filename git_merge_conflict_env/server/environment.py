@@ -11,7 +11,7 @@ except ImportError:
     from git_merge_conflict_env.models import MergeConflictAction, MergeConflictObservation, MergeConflictState
 
 from .conflict_generator import get_task, get_all_task_ids, ConflictScenario
-from .grader import grade_resolution, grade_multi_file
+from .grader import grade_resolution, grade_multi_file, SCORE_MIN, SCORE_MAX, _clamp_open
 
 # ── Tuning constants ──────────────────────────────────────
 ADVANCE_THRESHOLD = 0.85   # minimum score to move to next file
@@ -120,7 +120,7 @@ class MergeConflictEnvironment(Environment[MergeConflictAction, MergeConflictObs
             self._state.score = final_score
             return MergeConflictObservation(
                 done=True,
-                reward=round(max(0.0, min(1.0, final_score)), 3),
+                reward=round(_clamp_open(final_score), 3),
                 feedback=f"All files resolved. Final score: {final_score:.2f}. {result.feedback}",
                 conflicts_resolved=self._state.conflicts_resolved,
                 total_conflicts=self._state.total_conflicts,
@@ -131,7 +131,7 @@ class MergeConflictEnvironment(Environment[MergeConflictAction, MergeConflictObs
         next_scenario = self._task.scenarios[self._current_scenario_idx]
         return self._build_observation(
             next_scenario,
-            reward=round(max(0.0, min(1.0, step_reward)), 2),
+            reward=round(_clamp_open(step_reward), 3),
             feedback=result.feedback,
         )
 
@@ -156,14 +156,14 @@ class MergeConflictEnvironment(Environment[MergeConflictAction, MergeConflictObs
             total_conflicts=self._state.total_conflicts,
             feedback=feedback,
             done=False,
-            reward=round(max(0.0, min(1.0, reward)), 3),
+            reward=round(_clamp_open(reward), 3),
             last_action_error=error,
         )
 
     def _compute_final_score(self) -> float:
-        """Compute the final episode score."""
+        """Compute the final episode score (always strictly inside (0, 1))."""
         if not self._rewards:
-            return 0.0
+            return SCORE_MIN
         # For multi-file: grade all resolutions together
         if len(self._task.scenarios) > 1 and len(self._resolutions) == len(self._task.scenarios):
             result = grade_multi_file(
@@ -174,7 +174,7 @@ class MergeConflictEnvironment(Environment[MergeConflictAction, MergeConflictObs
                 reject_lines_list=[s.reject_lines for s in self._task.scenarios],
                 filenames=[s.filename for s in self._task.scenarios],
             )
-            return round(max(0.0, min(1.0, result.score)), 3)
+            return round(_clamp_open(result.score), 3)
         # Single file or incomplete: average of step rewards
         avg = sum(self._rewards) / len(self._rewards)
-        return round(max(0.0, min(1.0, avg)), 3)
+        return round(_clamp_open(avg), 3)

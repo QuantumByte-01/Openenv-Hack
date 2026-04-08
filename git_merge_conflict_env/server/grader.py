@@ -20,6 +20,23 @@ from typing import List, Optional
 
 CONFLICT_MARKER_PATTERN = re.compile(r"^(<{7}|={7}|>{7})", re.MULTILINE)
 
+# Strict open-interval clamp: every reported score must satisfy 0 < s < 1.
+# A perfect resolution caps at 1 - SCORE_EPSILON; a degenerate one floors
+# at SCORE_EPSILON. Keeps grader output well inside (0, 1) so downstream
+# validators that require strict bounds never see 0.0 or 1.0.
+SCORE_EPSILON = 0.001
+SCORE_MIN = SCORE_EPSILON
+SCORE_MAX = 1.0 - SCORE_EPSILON
+
+
+def _clamp_open(score: float) -> float:
+    """Clamp a score into the open interval (0, 1)."""
+    if score < SCORE_MIN:
+        return SCORE_MIN
+    if score > SCORE_MAX:
+        return SCORE_MAX
+    return score
+
 
 @dataclass
 class GradeResult:
@@ -120,7 +137,7 @@ def grade_resolution(
     # Empty / trivial resolution
     if not agent_resolution or len(agent_resolution.strip().splitlines()) < 2:
         return GradeResult(
-            score=0.0,
+            score=SCORE_MIN,
             conflicts_remaining=original_conflict_count,
             feedback="Resolution is empty or too short.",
         )
@@ -179,7 +196,7 @@ def grade_resolution(
         feedback_parts.append("Syntax errors detected in resolution.")
 
     return GradeResult(
-        score=round(max(0.0, min(1.0, score)), 3),
+        score=round(_clamp_open(score), 3),
         conflicts_remaining=remaining,
         feedback=" ".join(feedback_parts),
     )
@@ -202,7 +219,7 @@ def grade_multi_file(
     """
     if len(resolutions) != len(ground_truths):
         return GradeResult(
-            score=0.0,
+            score=SCORE_MIN,
             conflicts_remaining=sum(conflict_counts),
             feedback=f"Expected {len(ground_truths)} file resolutions, got {len(resolutions)}.",
         )
@@ -233,7 +250,7 @@ def grade_multi_file(
         feedback_parts.append(f"File {i + 1}: {r.feedback}")
 
     return GradeResult(
-        score=round(max(0.0, min(1.0, final)), 3),
+        score=round(_clamp_open(final), 3),
         conflicts_remaining=total_remaining,
         feedback=" | ".join(feedback_parts),
     )
