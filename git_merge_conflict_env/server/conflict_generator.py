@@ -372,8 +372,14 @@ class Calculator:
             "def multiply(",
             "def get_history(",
             "def clear(",
+            "def subtract(",
+            'self.history.append(f"{a} - {b} = {result}")',
         ],
-        reject_lines=[],
+        reject_lines=[
+            "return a + b",
+            "return a - b",
+            "return a * b",
+        ],
     ),
 ]
 
@@ -1070,8 +1076,18 @@ class DataProcessor:
             "logger.error(",
             "def get_errors(",
             "def clear_cache(",
+            "self.errors: List[str]",
+            "self._cache: Dict[str, Any]",
+            "if key in self._cache:",
+            "self._cache[key] = result",
+            "if r is not None",
+            "batch_size: int = 100",
         ],
-        reject_lines=[],
+        reject_lines=[
+            "from functools import lru_cache",
+            "from datetime import datetime",
+            'data["value"] * 2,',
+        ],
     ),
     ConflictScenario(
         filename="report_generator.py",
@@ -1199,8 +1215,14 @@ class ReportGenerator:
             "def get_summary(",
             'format == "json"',
             "Total:",
+            "record.get('category', '?')",
+            "import json",
+            "json.dumps(",
+            "self.group_by_category()",
         ],
-        reject_lines=[],
+        reject_lines=[
+            'f"  {record.get(\'name\'',
+        ],
     ),
     ConflictScenario(
         filename="stream_aggregator.py",
