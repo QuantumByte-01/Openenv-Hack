@@ -1,11 +1,15 @@
 """Aspect-based grading for merge conflict resolutions.
 
 Scoring uses five weighted aspects:
-  - Conflict markers removed (0.15): no <<<<<<< ======= >>>>>>> remain
-  - Key lines present     (0.35): critical lines from ground truth exist
+  - Conflict markers removed (0.10): no <<<<<<< ======= >>>>>>> remain
+  - Key lines present     (0.40): critical lines from ground truth exist
   - Reject lines absent   (0.15): lines that should NOT be in output are absent
-  - Text similarity        (0.25): difflib SequenceMatcher ratio
-  - Syntax valid           (0.10): Python compile() succeeds (.py files)
+  - Text similarity        (0.30): difflib SequenceMatcher ratio
+  - Syntax valid           (0.05): Python compile() succeeds (.py files)
+
+A small stylistic-fidelity gap is intentional: aspect coverage tops out
+near 1.0 even for capable models, while textual similarity surfaces
+real differences that yield score variance across tasks.
 """
 
 import difflib
@@ -124,15 +128,10 @@ def grade_resolution(
     agent_lines = _normalize(agent_resolution)
     truth_lines = _normalize(ground_truth)
 
-    # Exact match → perfect score
-    if agent_lines == truth_lines:
-        return GradeResult(
-            score=1.0,
-            conflicts_remaining=0,
-            feedback="Perfect resolution! Exact match with expected output.",
-        )
-
     # ── Compute aspect scores ─────────────────────────────
+    # NOTE: deliberately no exact-match shortcut. Aspects are computed
+    # uniformly so the score reflects similarity, key coverage, and
+    # rejected-pattern absence even for "correct-looking" outputs.
     markers_score = 0.0 if _has_conflict_markers(agent_resolution) else 1.0
     key_score = _check_key_lines(agent_lines, key_lines)
     reject_score = _check_reject_lines(agent_lines, reject_lines)
@@ -141,11 +140,11 @@ def grade_resolution(
 
     # ── Weighted total ────────────────────────────────────
     score = (
-        0.15 * markers_score
-        + 0.35 * key_score
+        0.10 * markers_score
+        + 0.40 * key_score
         + 0.15 * reject_score
-        + 0.25 * similarity_score
-        + 0.10 * syntax_score
+        + 0.30 * similarity_score
+        + 0.05 * syntax_score
     )
 
     # ── Build feedback ────────────────────────────────────
@@ -180,7 +179,7 @@ def grade_resolution(
         feedback_parts.append("Syntax errors detected in resolution.")
 
     return GradeResult(
-        score=round(max(0.0, min(1.0, score)), 2),
+        score=round(max(0.0, min(1.0, score)), 3),
         conflicts_remaining=remaining,
         feedback=" ".join(feedback_parts),
     )
@@ -196,8 +195,10 @@ def grade_multi_file(
 ) -> GradeResult:
     """Grade a multi-file resolution (for hard/nightmare tasks).
 
-    Scores each file independently, then averages.
-    Adds a consistency bonus if all files are resolved correctly.
+    Scores each file independently and takes the *minimum* per-file score
+    as the multi-file score. This penalises any single weak file rather
+    than smoothing it away with an average — cross-file consistency is
+    only worth something if every file is correct.
     """
     if len(resolutions) != len(ground_truths):
         return GradeResult(
@@ -218,23 +219,21 @@ def grade_multi_file(
     ):
         file_results.append(grade_resolution(res, truth, count, kl, rl, fn))
 
+    # 70% min (penalises the weakest file) + 30% mean (rewards
+    # overall coverage). No consistency bonus — those artificially
+    # collapse a 0.9 multi-file run to 1.0 and erase score variance.
+    min_score = min(r.score for r in file_results)
     avg_score = sum(r.score for r in file_results) / len(file_results)
-
-    # Consistency bonus: if all files score >= 0.8, add 0.1
-    all_good = all(r.score >= 0.8 for r in file_results)
-    if all_good:
-        avg_score = min(1.0, avg_score + 0.1)
+    final = 0.7 * min_score + 0.3 * avg_score
 
     total_remaining = sum(r.conflicts_remaining for r in file_results)
 
     feedback_parts = []
     for i, r in enumerate(file_results):
         feedback_parts.append(f"File {i + 1}: {r.feedback}")
-    if all_good:
-        feedback_parts.append("Consistency bonus: +0.1 (all files resolved well).")
 
     return GradeResult(
-        score=round(max(0.0, min(1.0, avg_score)), 2),
+        score=round(max(0.0, min(1.0, final)), 3),
         conflicts_remaining=total_remaining,
         feedback=" | ".join(feedback_parts),
     )

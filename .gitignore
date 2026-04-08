@@ -17,6 +17,8 @@ build/
 docs_for_claude/
 test_scores.py
 upload_space.py
+run_inference_space.py
+test_grader_local.py
 
 # uv
 .python-version

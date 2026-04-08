@@ -120,7 +120,7 @@ class MergeConflictEnvironment(Environment[MergeConflictAction, MergeConflictObs
             self._state.score = final_score
             return MergeConflictObservation(
                 done=True,
-                reward=round(max(0.0, min(1.0, final_score)), 2),
+                reward=round(max(0.0, min(1.0, final_score)), 3),
                 feedback=f"All files resolved. Final score: {final_score:.2f}. {result.feedback}",
                 conflicts_resolved=self._state.conflicts_resolved,
                 total_conflicts=self._state.total_conflicts,
@@ -156,7 +156,7 @@ class MergeConflictEnvironment(Environment[MergeConflictAction, MergeConflictObs
             total_conflicts=self._state.total_conflicts,
             feedback=feedback,
             done=False,
-            reward=round(max(0.0, min(1.0, reward)), 2),
+            reward=round(max(0.0, min(1.0, reward)), 3),
             last_action_error=error,
         )
 
@@ -174,7 +174,7 @@ class MergeConflictEnvironment(Environment[MergeConflictAction, MergeConflictObs
                 reject_lines_list=[s.reject_lines for s in self._task.scenarios],
                 filenames=[s.filename for s in self._task.scenarios],
             )
-            return round(max(0.0, min(1.0, result.score)), 2)
+            return round(max(0.0, min(1.0, result.score)), 3)
         # Single file or incomplete: average of step rewards
         avg = sum(self._rewards) / len(self._rewards)
-        return round(max(0.0, min(1.0, avg)), 2)
+        return round(max(0.0, min(1.0, avg)), 3)
