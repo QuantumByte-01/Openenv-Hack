@@ -18,12 +18,23 @@ An OpenEnv RL environment where AI agents learn to resolve git merge conflicts �
 
 ## Motivation
 
-Git merge conflicts are one of the most common friction points in software development. Engineers at every level — from junior developers to staff engineers at Meta — spend significant time resolving conflicts during collaborative development. Despite being a universal developer pain point, **no RL environment exists for training agents on this task**.
+Git merge conflicts are one of the most common friction points in software development.
+A 2024 Atlassian survey found developers spend **~3 hours/week** on merge conflicts in
+active repositories; in monorepos (Meta, Google) the figure is higher. Engineers at every
+level — from junior developers to staff engineers — resolve conflicts daily during
+collaborative development. Despite being a universal developer pain point, **no RL
+environment exists for training agents on this task**.
+
+Prior benchmarks (ConGra, GitGoodBench, ConflictBench) study *what* models get wrong
+but do not expose merge resolution as a trainable RL environment. This project turns
+those documented failure modes into a deterministic OpenEnv with structured rewards so
+RL agents can actually be trained against them.
 
 This environment fills that gap by providing structured, deterministic scenarios where agents can learn to:
 - Parse conflict markers (`<<<<<<<`, `=======`, `>>>>>>>`)
 - Understand the intent of both branches
 - Produce correctly merged code that satisfies constraints from both sides
+- Navigate real-world traps: sync-to-async refactors, cross-file naming consistency, overlapping algorithmic changes
 
 ## Environment Overview
 
@@ -108,9 +119,28 @@ score = 0.10 × marker_score        # no conflict markers remain
 **Multi-file grading**: For tasks with multiple files, the final score is `0.7 × min + 0.3 × avg` across files. The min term penalizes any single weak file rather than smoothing it away with an average — this is what surfaces real cross-task variance instead of collapsing everything to 1.0.
 
 Special cases:
-- Empty resolution → `0.0`
-- Exact match → `1.0`
+- Empty / trivial resolution → near-zero score
 - Unresolved conflict markers → heavy penalty via `marker_score`
+- All scores clamped to the strict open interval `(0, 1)` — no exact 0.0 or 1.0
+
+## Design Decisions
+
+**Why key_lines + reject_lines instead of just difflib?**
+A naive text-similarity grader gives 0.90+ to any resolution that picks one side and strips markers.
+The key_lines/reject_lines system checks *semantic correctness*: did the agent keep the right constant value,
+the right function signature, the right lock type? This is what surfaces real score variance across tasks
+instead of collapsing everything to ~1.0.
+
+**Why 0.7 × min + 0.3 × avg for multi-file?**
+A simple average hides a catastrophic single-file failure. If the agent resolves 2/3 files perfectly
+but completely botches the third, the average still looks good. The min term forces the agent to get
+*every* file right — especially important for the nightmare task where cross-file naming consistency
+is the whole point.
+
+**Why attempt decay?**
+RL training benefits from first-attempt incentives. Without decay, an agent could iterate 3 times and
+still get a high reward. With `0.9^(attempt-1)`, there's a clear training signal for getting it right
+on the first try.
 
 ## Setup & Usage
 
