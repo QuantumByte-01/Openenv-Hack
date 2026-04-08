@@ -4,14 +4,18 @@ Inference Script — Git Merge Conflict Resolution Environment
 Runs a frozen LLM against the environment to produce baseline scores.
 
 MANDATORY ENV VARS:
-    API_BASE_URL   — LLM endpoint (default: HF router)
-    MODEL_NAME     — model identifier (default: Qwen2.5-72B-Instruct)
-    HF_TOKEN       — Hugging Face API key (required, no default)
+    API_BASE_URL    — LLM endpoint (default: HF router)
+    MODEL_NAME      — model identifier (default: Qwen2.5-72B-Instruct)
+    HF_TOKEN        — Hugging Face API key (required, no default)
+
+OPTIONAL ENV VARS:
+    LOCAL_IMAGE_NAME — Docker image name for from_docker_image() mode.
+                       When unset, connects to the deployed HF Space.
 
 STDOUT FORMAT:
     [START] task=<task> env=git-merge-conflict-env model=<model>
     [STEP]  step=<n> action=<action> reward=<0.00> done=<true|false> error=<msg|null>
-    [END]   success=<true|false> steps=<n> rewards=<r1,r2,...>
+    [END]   success=<true|false> steps=<n> score=<s.sss> rewards=<r1,r2,...>
 """
 
 import asyncio
@@ -27,6 +31,9 @@ from git_merge_conflict_env import MergeConflictAction, MergeConflictEnv
 API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
 MODEL_NAME = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
 HF_TOKEN = os.getenv("HF_TOKEN")
+
+# Optional — only used when launching the env from a local Docker image.
+LOCAL_IMAGE_NAME = os.getenv("LOCAL_IMAGE_NAME")
 
 if HF_TOKEN is None:
     raise ValueError("HF_TOKEN environment variable is required")
@@ -168,16 +175,29 @@ async def run_task(client: OpenAI, env: MergeConflictEnv, task_id: str) -> float
         return 0.0
 
 
+def make_env() -> MergeConflictEnv:
+    """Construct the environment client.
+
+    Mode selection (matches the OpenEnv submission checklist):
+      1. If LOCAL_IMAGE_NAME is set → launch the env from that Docker image.
+      2. Otherwise → connect over HTTP to the deployed HF Space.
+    """
+    if LOCAL_IMAGE_NAME:
+        return MergeConflictEnv.from_docker_image(LOCAL_IMAGE_NAME)
+    return MergeConflictEnv(base_url="https://swastikr-git-merge-conflict-env.hf.space")
+
+
 async def main() -> None:
     client = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN)
-
-    # Connect to environment
-    env = MergeConflictEnv(base_url="http://localhost:7860")
+    env = make_env()
 
     scores = {}
-    for task_id in ["easy", "medium", "hard", "expert", "nightmare"]:
-        score = await run_task(client, env, task_id)
-        scores[task_id] = score
+    try:
+        for task_id in ["easy", "medium", "hard", "expert", "nightmare"]:
+            score = await run_task(client, env, task_id)
+            scores[task_id] = score
+    finally:
+        await env.close()
 
     print("\n--- Baseline Scores ---", flush=True)
     for task_id, score in scores.items():
