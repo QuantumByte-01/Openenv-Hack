@@ -1,6 +1,6 @@
 ---
 title: Git Merge Conflict Env
-emoji: 🤖
+emoji: 🔀
 colorFrom: red
 colorTo: indigo
 sdk: docker
